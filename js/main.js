@@ -14,14 +14,33 @@
 
   /* ---------- Estado ---------- */
   const hoy = new Date();
-  let tareas = leer('tareas', null);
-  if (!tareas) {
-    tareas = [
-      { id: 1, titulo: 'Terminar el taller', desc: 'Entregar antes de la noche', fecha: iso(hoy), hecha: false },
-      { id: 2, titulo: 'Estudiar JavaScript', desc: 'Repasar eventos y storage', fecha: iso(hoy), hecha: true },
-    ];
-    guardar('tareas', tareas);
+
+  /* ---------- TaskManager ---------- */
+  class TaskManager {
+    constructor(clave) {
+      this.clave = clave;
+      this.tasks = leer(clave, null);
+      if (!this.tasks) {
+        this.tasks = [
+          { id: 1, titulo: 'Terminar el taller', desc: 'Entregar antes de la noche', fecha: iso(hoy), hecha: false },
+          { id: 2, titulo: 'Estudiar JavaScript', desc: 'Repasar eventos y storage', fecha: iso(hoy), hecha: true },
+        ];
+        this.save();
+      }
+    }
+    save() { guardar(this.clave, this.tasks); }
+    addTask(tarea) { this.tasks.push(tarea); this.save(); }
+    toggleTask(taskId) {
+      const t = this.tasks.find((x) => x.id === taskId);
+      if (t) { t.hecha = !t.hecha; this.save(); }
+    }
+    // Elimina la tarea con ese id del array this.tasks y persiste en localStorage
+    deleteTask(taskId) {
+      this.tasks = this.tasks.filter((t) => t.id !== taskId);
+      this.save();
+    }
   }
+  const manager = new TaskManager('tareas');
   let diaSel = null;          // filtro de día
   let verTodas = false;       // "ver más"
   let mes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -32,6 +51,7 @@
 
   /* ---------- Tareas ---------- */
   function pintarTareas() {
+    const tareas = manager.tasks;
     const lista = diaSel ? tareas.filter((t) => t.fecha === diaSel) : tareas;
     const ordenadas = [...lista].sort((a, b) => a.hecha - b.hecha || a.fecha.localeCompare(b.fecha));
     const visibles = verTodas ? ordenadas : ordenadas.slice(0, LIMITE);
@@ -49,7 +69,7 @@
             ${t.desc ? `<p>${esc(t.desc)}</p>` : ''}
             <div class="acciones">
               <span class="fecha">${new Date(t.fecha + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</span>
-              <button class="borrar" data-borrar="${t.id}" aria-label="Eliminar tarea">✕</button>
+              <button type="button" class="borrar" data-borrar="${t.id}" aria-label="Eliminar tarea: ${esc(t.titulo)}">Eliminar</button>
             </div>
           </article>
         </div>`).join('')
@@ -66,16 +86,16 @@
   }
 
   function alternar(id) {
-    const t = tareas.find((x) => x.id === id);
-    if (t) { t.hecha = !t.hecha; guardar('tareas', tareas); pintarTareas(); }
+    manager.toggleTask(id);
+    pintarTareas();
   }
 
   $('#listaTareas').addEventListener('click', (e) => {
     const b = e.target.closest('[data-borrar]');
     if (b) {
       e.stopPropagation();
-      tareas = tareas.filter((t) => t.id !== +b.dataset.borrar);
-      guardar('tareas', tareas); pintarTareas(); return;
+      manager.deleteTask(Number(b.dataset.borrar));
+      pintarTareas(); return;
     }
     const c = e.target.closest('.tarjeta');
     if (c) alternar(+c.dataset.id);
@@ -92,8 +112,7 @@
     e.preventDefault();
     const titulo = $('#tTitulo').value.trim();
     if (!titulo) return;
-    tareas.push({ id: Date.now(), titulo, desc: $('#tDesc').value.trim(), fecha: $('#tFecha').value, hecha: false });
-    guardar('tareas', tareas);
+    manager.addTask({ id: Date.now(), titulo, desc: $('#tDesc').value.trim(), fecha: $('#tFecha').value, hecha: false });
     e.target.reset(); $('#tFecha').value = iso(hoy);
     bootstrap.Modal.getInstance(modalEl).hide();
     pintarTareas();
@@ -108,7 +127,7 @@
     const offset = (new Date(mes.getFullYear(), mes.getMonth(), 1).getDay() + 6) % 7;
     html += '<div></div>'.repeat(offset);
     const total = new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate();
-    const conTarea = new Set(tareas.map((t) => t.fecha));
+    const conTarea = new Set(manager.tasks.map((t) => t.fecha));
     for (let d = 1; d <= total; d++) {
       const f = iso(new Date(mes.getFullYear(), mes.getMonth(), d));
       const cls = [f === iso(hoy) ? 'hoy' : '', f === diaSel ? 'sel' : '', conTarea.has(f) ? 'tiene' : ''].join(' ');
